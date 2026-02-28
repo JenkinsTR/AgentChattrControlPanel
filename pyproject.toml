@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentchattr-control-panel"
+version = "0.2.0"
+description = "GUI control panel for agentchattr (Codex CLI + Gemini CLI)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyQt6>=6.6",
+  "PyQt6-Fluent-Widgets>=1.10",
+  "tomlkit>=0.12",
+  "psutil>=5.9",
+  "platformdirs>=4.0",
+  "requests>=2.31",
+]
+
+[project.scripts]
+acp = "acp.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

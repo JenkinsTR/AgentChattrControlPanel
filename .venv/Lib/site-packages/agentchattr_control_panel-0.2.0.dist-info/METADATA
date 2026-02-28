@@ -1,0 +1,73 @@
+Metadata-Version: 2.4
+Name: agentchattr-control-panel
+Version: 0.2.0
+Summary: GUI control panel for agentchattr (Codex CLI + Gemini CLI)
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: PyQt6>=6.6
+Requires-Dist: PyQt6-Fluent-Widgets>=1.10
+Requires-Dist: tomlkit>=0.12
+Requires-Dist: psutil>=5.9
+Requires-Dist: platformdirs>=4.0
+Requires-Dist: requests>=2.31
+
+# AgentChattr Control Panel (ACP)
+
+A Windows-friendly GUI (PyQt6 + QFluentWidgets) that installs, configures, and runs **agentchattr** with **Codex CLI** + **Gemini CLI**.
+
+## What this app manages
+
+- Clone/update `bcurts/agentchattr`
+- Create/repair `agentchattr/.venv` and install Python requirements
+- Detect / install Codex CLI + Gemini CLI (optional; uses `npm`)
+- Workspace profiles (greenfield-friendly): pick a working directory, generate `config.toml`
+- Run control: start/stop server + open wrappers (Codex/Gemini) in their own console windows
+- LAN mode helpers:
+  - set `server.host` to your LAN IP
+  - start server with `--allow-network` when required
+  - patch/unpatch `app.py` to allow LAN `Origin` (needed for non-localhost browser access)
+
+## Requirements
+
+- **Python 3.11+**
+- Windows 10/11 recommended
+- Git (for cloning/updating)
+- Node.js + npm (only if you want ACP to install Codex/Gemini CLIs for you)
+
+## Install & run (recommended)
+
+```bat
+cd /d <this-folder>
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\\Scripts\\pip install -e .
+.venv\Scripts\python -m acp
+```
+
+## Notes on QFluentWidgets packages (important)
+
+QFluentWidgets exposes the import name `qfluentwidgets`. **Do not install multiple variants at once**
+(PyQt-Fluent-Widgets / PyQt6-Fluent-Widgets / PySide6-Fluent-Widgets), because they share that module name.
+
+This project uses **PyQt6-Fluent-Widgets**.
+
+## Licensing heads-up
+
+- `PyQt6-Fluent-Widgets` is **GPLv3**. If you distribute ACP, you must comply with GPLv3.
+  If this is a private/internal tool, you're usually fine — but don’t ship it closed-source without checking.
+
+## Packaging
+
+Once you're happy:
+
+```bat
+.venv\Scripts\pip install pyinstaller
+.venv\Scripts\pyinstaller --noconfirm --onefile --name AgentChattrControlPanel -m acp
+```
+
+(You may want `--windowed` to hide the console.)
+
+
+## Why pip prints `Obtaining file:///...`
+
+ACP uses `pip install -e .` (editable install) so the `src/` layout imports work without copying files.

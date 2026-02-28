@@ -1,0 +1,6 @@
+PyQt6>=6.6
+PyQt6-Fluent-Widgets>=1.10
+tomlkit>=0.12
+psutil>=5.9
+platformdirs>=4.0
+requests>=2.31
