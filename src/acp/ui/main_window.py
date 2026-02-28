@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from qfluentwidgets import FluentWindow, FluentIcon as FIF, NavigationItemPosition, setTheme, Theme
 
 from ..core.state import AppState
 from .log_bus import LogBus
+from .status_bar import StatusBar
 from .interfaces.setup_interface import SetupInterface
 from .interfaces.workspaces_interface import WorkspacesInterface
 from .interfaces.config_interface import ConfigInterface
@@ -55,6 +58,31 @@ class MainWindow(FluentWindow):
             "About",
             NavigationItemPosition.BOTTOM
         )
+
+        # Status bar at bottom
+        self.statusBar = StatusBar(self)
+        self._content_wrapper = QWidget(self)
+        self._content_layout = QVBoxLayout(self._content_wrapper)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
+        self._content_layout.addWidget(self.stackedWidget, 1)
+        self._content_layout.addWidget(self.statusBar)
+        self.widgetLayout.removeWidget(self.stackedWidget)
+        self.widgetLayout.addWidget(self._content_wrapper)
+
+        self.runInterface.status_changed.connect(self._update_status_bar)
+        self.statusBar.refresh_requested.connect(self.runInterface._refresh_run_status)
+
+        # On startup: ensure active workspace is in Codex trusted (if any)
+        QTimer.singleShot(500, self.workspacesInterface._ensure_codex_trusted_on_show)
+
+    def _update_status_bar(self):
+        sr, url, cr, gr = self.runInterface.get_status()
+        self.statusBar.update_status(sr, url, cr, gr)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.runInterface.server.stop()
+        super().closeEvent(event)
 
     def _center(self):
         desk = QApplication.primaryScreen().availableGeometry()

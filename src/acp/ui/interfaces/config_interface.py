@@ -6,12 +6,15 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 
 from qfluentwidgets import (
     ScrollArea, SettingCardGroup, PushSettingCard, PrimaryPushSettingCard,
-    InfoBar, InfoBarPosition, FluentIcon as FIF, LineEdit
+    InfoBar, InfoBarPosition, FluentIcon as FIF, LineEdit, SwitchSettingCard
 )
 from qfluentwidgets.components.widgets.label import CaptionLabel
 
 from ...core.state import AppState, save_state
-from ...core.toml_config import load_toml, save_toml, build_default_config, set_server, set_mcp, set_routing, set_images, apply_workspace_single
+from ...core.toml_config import (
+    load_toml, save_toml, build_default_config, set_server, set_mcp, set_routing, set_images,
+    apply_workspace_single, get_agent_write_access, set_agent_write_access,
+)
 
 class ConfigInterface(ScrollArea):
     def __init__(self, parent, state: AppState):
@@ -73,6 +76,32 @@ class ConfigInterface(ScrollArea):
         self.saveServerCard.clicked.connect(self.save_server)
         self.group.addSettingCard(self.saveServerCard)
 
+        # Agent write access toggles
+        self.writeGroup = SettingCardGroup("Agent write access", self.container)
+        self.v.addWidget(self.writeGroup)
+
+        self.codexWriteCard = SwitchSettingCard(
+            getattr(FIF, "EDIT", FIF.PENCIL_INK),
+            "Codex write access",
+            "Allow Codex to write files in the workspace (workspace-write + no approvals). Off = read-only.",
+            configItem=None,
+            parent=self.container,
+        )
+        self.codexWriteCard.checkedChanged.connect(lambda v: self._on_write_toggle("codex", v))
+        self.writeGroup.addSettingCard(self.codexWriteCard)
+
+        self.geminiWriteCard = SwitchSettingCard(
+            getattr(FIF, "EDIT", FIF.PENCIL_INK),
+            "Gemini write access",
+            "Allow Gemini to write files in the workspace (allowedDirectories). Off = read-only.",
+            configItem=None,
+            parent=self.container,
+        )
+        self.geminiWriteCard.checkedChanged.connect(lambda v: self._on_write_toggle("gemini", v))
+        self.writeGroup.addSettingCard(self.geminiWriteCard)
+
+        self._load_write_toggles()
+
     def info(self, ok: bool, title: str, msg: str):
         (InfoBar.success if ok else InfoBar.error)(title, msg, parent=self, position=InfoBarPosition.TOP, duration=3000 if ok else 6000)
 
@@ -121,6 +150,53 @@ class ConfigInterface(ScrollArea):
         save_state(self.state)
 
         self.info(True, "Saved server settings", f"{host}:{port}")
+
+    def _load_write_toggles(self):
+        """Load write_access from config.toml into the toggle switches."""
+        cfg = self._config_path()
+        if not cfg or not cfg.exists():
+            self.codexWriteCard.blockSignals(True)
+            self.geminiWriteCard.blockSignals(True)
+            self.codexWriteCard.setChecked(True)
+            self.geminiWriteCard.setChecked(True)
+            self.codexWriteCard.blockSignals(False)
+            self.geminiWriteCard.blockSignals(False)
+            return
+        try:
+            doc = load_toml(cfg)
+            self.codexWriteCard.blockSignals(True)
+            self.geminiWriteCard.blockSignals(True)
+            self.codexWriteCard.setChecked(get_agent_write_access(doc, "codex"))
+            self.geminiWriteCard.setChecked(get_agent_write_access(doc, "gemini"))
+            self.codexWriteCard.blockSignals(False)
+            self.geminiWriteCard.blockSignals(False)
+        except Exception:
+            self.codexWriteCard.blockSignals(True)
+            self.geminiWriteCard.blockSignals(True)
+            self.codexWriteCard.setChecked(True)
+            self.geminiWriteCard.setChecked(True)
+            self.codexWriteCard.blockSignals(False)
+            self.geminiWriteCard.blockSignals(False)
+
+    def _on_write_toggle(self, agent: str, value: bool):
+        """Persist write_access to config.toml when user toggles."""
+        cfg = self._config_path()
+        if not cfg or not cfg.exists():
+            self.info(False, "Missing config.toml", "Use 'Write default' first.")
+            return
+        try:
+            doc = load_toml(cfg)
+            set_agent_write_access(doc, agent, value)
+            save_toml(cfg, doc)
+            label = "Codex" if agent == "codex" else "Gemini"
+            mode = "write" if value else "read-only"
+            self.info(True, f"{label} access", f"Set to {mode}. Restart the wrapper for changes to take effect.")
+        except Exception as e:
+            self.info(False, "Failed to save", str(e))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._load_write_toggles()
 
     def apply_workspace(self):
         cfg = self._config_path()

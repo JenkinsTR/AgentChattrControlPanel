@@ -5,6 +5,8 @@ src/acp/__main__.py
 src/acp/main.py
 src/acp/core/agentchattr.py
 src/acp/core/checks.py
+src/acp/core/codex_config.py
+src/acp/core/codex_windows_acl.py
 src/acp/core/patching.py
 src/acp/core/processes.py
 src/acp/core/state.py
@@ -15,6 +17,7 @@ src/acp/ui/ansi.py
 src/acp/ui/async_worker.py
 src/acp/ui/log_bus.py
 src/acp/ui/main_window.py
+src/acp/ui/status_bar.py
 src/acp/ui/interfaces/about_interface.py
 src/acp/ui/interfaces/config_interface.py
 src/acp/ui/interfaces/logs_interface.py
