@@ -152,13 +152,15 @@ def start_wrapper_console(root: Path, agent_name: str) -> None:
 
 def find_wrapper_pids(agent_name: str) -> list[int]:
     pids = []
-    needle1 = "wrapper.py"
-    needle2 = f" {agent_name}"
+    target = (agent_name or "").strip().lower()
+    if not target:
+        return pids
     for p in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
         try:
-            cmdline = " ".join(p.info.get("cmdline") or [])
-            if needle1 in cmdline and needle2 in cmdline:
-                pids.append(p.info["pid"])
+            cmdline = [str(x) for x in (p.info.get("cmdline") or [])]
+            parsed = _extract_wrapper_agent_name(cmdline)
+            if parsed and parsed.lower() == target:
+                pids.append(int(p.info["pid"]))
         except Exception:
             continue
     return pids
@@ -167,21 +169,39 @@ def find_wrapper_pids(agent_name: str) -> list[int]:
 def get_running_wrapper_agents() -> set[str]:
     """Single pass over processes; returns set of agent names with running wrappers."""
     result: set[str] = set()
-    agents = ("codex", "gemini", "claude", "codex_A", "gemini_A", "codex_B", "gemini_B")
     try:
         for p in psutil.process_iter(attrs=["pid", "cmdline"]):
             try:
-                cmdline_list = p.info.get("cmdline") or []
-                cmdline = " ".join(str(x) for x in cmdline_list).lower()
-                if "wrapper.py" not in cmdline:
-                    continue
-                for a in agents:
-                    a_lower = a.lower()
-                    if f" {a_lower}" in cmdline or cmdline.endswith(a_lower) or f" {a_lower} " in cmdline:
-                        result.add(a)
-                        break
+                cmdline_list = [str(x) for x in (p.info.get("cmdline") or [])]
+                parsed = _extract_wrapper_agent_name(cmdline_list)
+                if parsed:
+                    result.add(parsed)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception:
         pass
     return result
+
+
+def _extract_wrapper_agent_name(cmdline: list[str]) -> str | None:
+    if not cmdline:
+        return None
+    wrapper_idx = -1
+    for i, token in enumerate(cmdline):
+        norm = token.replace("\\", "/").strip().lower()
+        if norm == "wrapper.py" or norm.endswith("/wrapper.py"):
+            wrapper_idx = i
+            break
+    if wrapper_idx < 0:
+        return None
+
+    for token in cmdline[wrapper_idx + 1 :]:
+        t = str(token).strip().strip("\"'")
+        if not t:
+            continue
+        if t == "--":
+            break
+        if t.startswith("-"):
+            continue
+        return t
+    return None

@@ -77,8 +77,8 @@ class MainWindow(FluentWindow):
         QTimer.singleShot(500, self.workspacesInterface._ensure_codex_trusted_on_show)
 
     def _update_status_bar(self):
-        sr, url, cr, gr = self.runInterface.get_status()
-        self.statusBar.update_status(sr, url, cr, gr)
+        sr, url, agent_status = self.runInterface.get_status()
+        self.statusBar.update_status(sr, url, agent_status)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.runInterface.server.stop()
