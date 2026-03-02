@@ -1,3 +1,5 @@
 .DS_Store
 Thumbs.db
 *.zip
+.venv/Lib/site-packages/agentchattr_control_panel-0.2.0.dist-info/RECORD
+.venv/Scripts/acp.exe
