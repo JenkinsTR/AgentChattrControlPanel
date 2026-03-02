@@ -23,6 +23,27 @@ class AboutInterface(ScrollArea):
         self.group = SettingCardGroup("About", self.container)
         self.v.addWidget(self.group)
 
+        self.creatorGroup = SettingCardGroup("Creator", self.container)
+        self.v.addWidget(self.creatorGroup)
+
+        self.creatorGroup.addSettingCard(HyperlinkCard(
+            "https://github.com/JenkinsTR",
+            "GitHub profile",
+            FIF.GITHUB,
+            "JenkinsTR",
+            "Project author and maintainer.",
+            parent=self.container
+        ))
+
+        self.creatorGroup.addSettingCard(HyperlinkCard(
+            "https://jmd.vc",
+            "Jenkins Media Digital website",
+            FIF.GLOBE,
+            "Jenkins Media Digital",
+            "Company site and portfolio.",
+            parent=self.container
+        ))
+
         self.group.addSettingCard(HyperlinkCard(
             "https://github.com/bcurts/agentchattr",
             "agentchattr repository",
