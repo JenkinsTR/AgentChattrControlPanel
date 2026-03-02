@@ -72,6 +72,7 @@ class MainWindow(FluentWindow):
 
         self.runInterface.status_changed.connect(self._update_status_bar)
         self.statusBar.refresh_requested.connect(self.runInterface._refresh_run_status)
+        self.workspacesInterface.workspace_activated.connect(self._on_workspace_activated)
 
         # On startup: ensure active workspace is in Codex trusted (if any)
         QTimer.singleShot(500, self.workspacesInterface._ensure_codex_trusted_on_show)
@@ -83,6 +84,11 @@ class MainWindow(FluentWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self.runInterface.server.stop()
         super().closeEvent(event)
+
+    def _on_workspace_activated(self, _path: str, _applied: bool, _detail: str):
+        # Hot-reload dependent tabs after workspace change.
+        self.configInterface.reload_agents()
+        self.runInterface.reload_agents()
 
     def _center(self):
         desk = QApplication.primaryScreen().availableGeometry()

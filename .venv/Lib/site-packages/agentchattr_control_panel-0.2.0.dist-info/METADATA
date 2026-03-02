@@ -13,25 +13,41 @@ Requires-Dist: requests>=2.31
 
 # AgentChattr Control Panel (ACP)
 
-A Windows-friendly GUI (PyQt6 + QFluentWidgets) that installs, configures, and runs **agentchattr** with dynamic multi-agent support.
+AgentChattr Control Panel (ACP) is a Windows-focused desktop GUI for installing, configuring, and running [`agentchattr`](https://github.com/bcurts/agentchattr).
 
-## What this app manages
+Its job is to make multi-agent setup and daily operation practical for non-terminal workflows:
+- setup and validate dependencies
+- manage project workspaces
+- configure `config.toml` (including dynamic agents)
+- handle LAN/security helpers
+- run/stop server and wrappers
+- view live logs in one place
 
-- **Setup**: Clone/update `bcurts/agentchattr`, create `.venv`, install Codex CLI and Gemini CLI (via npm)
-- **Workspaces**: Define workspace folders for your projects and set an active workspace
-- **Config**: Manage any number of `[agents.*]` entries, agent presets, and extra per-agent TOML options
-- **LAN & Security**: Set LAN IP, patch `app.py` for LAN Origin, start server with `--allow-network`
-- **Run**: Start/stop the server, open chat in browser, and launch wrappers for all configured agents
-- **Logs**: Stream output from git, pip, npm, and server
+## Current Features
+
+- Setup workflow for `agentchattr` clone/pull, `.venv` creation/repair, and optional CLI installs (`codex`, `gemini`)
+- Workspace profile management with active workspace selection
+- Codex trust + Windows ACL checks/repair helpers for workspace-write compatibility
+- Dynamic agent editor for any number of `[agents.*]` entries
+- Presets system (built-in + custom) for fast agent creation
+- Per-agent advanced config support via "Additional TOML options"
+- Server controls (start/stop/open chat)
+- Per-agent wrapper controls generated from current config
+- LAN host + origin patch workflow
+- Consolidated logs for setup/run diagnostics
+
+## Caveats
+
+- Live status updates and agent "stop" mechanisms are experimental and may not function correctly. Stopping agents is best done by closing their respective terminal windows instead of using "Stop". 
 
 ## Requirements
 
-- **Python 3.11+**
+- Python 3.11+
 - Windows 10/11 recommended
-- **Git** (for cloning/updating agentchattr)
-- **Node.js + npm** (only if you want ACP to install Codex/Gemini CLIs for you)
+- Git (for cloning/updating `agentchattr`)
+- Node.js + npm (only needed if ACP installs CLI agents for you)
 
-## Install and run
+## Install and Run
 
 ### Option A (recommended)
 
@@ -50,64 +66,73 @@ pip install -e .
 python -m acp
 ```
 
-## Usage
+## UI Tour (Screenshots)
 
-The UI is ordered by workflow.
+The screenshots below are ordered by the ACP workflow and tab order.
 
-### 1. Setup
+### 1. Setup Tab
+Use this tab to bootstrap and validate the full environment.
 
-1. Enter the path where agentchattr should live (existing folder or empty folder to clone into), or click **Browse**.
-2. **Clone** clones `bcurts/agentchattr` into the selected folder (folder must be empty).
-3. **Pull** updates an existing clone with `git pull --ff-only`.
-4. **Create/Repair** creates `agentchattr/.venv` and installs `requirements.txt`.
-5. **Install Codex CLI** / **Install Gemini CLI** are optional and install CLIs globally via npm.
-6. Click **Refresh** to update status.
+![Setup tab showing environment checks and setup actions](screenshots/1_setup.png)
 
-### 2. Workspaces
+### 2. Workspaces Tab
+Manage workspace profiles and Codex trust/ACL status.
 
-1. Enter a **Name** and **Folder path**, or use **Browse**.
-2. Use **Create folder** if the path does not exist.
-3. Click **Add**.
-4. Select a workspace and click **Set active**.
+#### 2a. Workspace added, currently untrusted
+![Workspaces tab with active workspace and untrusted status](screenshots/2a_workspace_untrusted.png)
 
-### 3. Config
+#### 2b. ACL preflight warning state
+![Workspaces tab showing ACL compatibility warning details](screenshots/2b_workspace_untrusted.png)
 
-1. Set **server.host** and **server.port**.
-2. Use the **Agents editor** to add/edit/delete any `[agents.*]` entry.
-3. Configure standard agent fields: `command`, `cwd`, `label`, `color`, `resume_flag`, `write_access`, `extra_args`, `strip_env`.
-4. Use **Additional TOML options** to set any other per-agent keys supported by your agentchattr/wrapper schema.
-5. Use presets: apply built-ins, save custom presets, and delete custom presets.
-6. **Apply** writes the active workspace path to every agent `cwd`.
-7. **Write** creates a clean default `config.toml`.
-8. **Save** updates server and MCP settings.
+#### 2c. Trusted and ACL-compatible state
+![Workspaces tab showing trusted and ACL-compatible status](screenshots/2c_workspace_trusted.png)
 
-### 4. LAN and Security (optional)
+### 3. Config Tab
+Edit server settings and all agent definitions from `config.toml`.
 
-1. Select your LAN IP from the dropdown or type it.
-2. Click **Apply** to set host.
-3. Click **Patch** to patch `app.py` for LAN-origin requests.
-4. Save host in Config. Server launch will use `--allow-network` for non-localhost hosts.
+#### 3a. General agent config editing
+![Config tab with dynamic agents editor and presets](screenshots/3a_settings.png)
 
-### 5. Run
+#### 3b. Custom multi-agent configuration
+![Config tab showing custom agent entries and advanced options](screenshots/3b_settings_custom_agents.png)
 
-1. **Start** starts the agentchattr server.
-2. **Open** opens the chat UI in your browser.
-3. Use generated per-agent **Start/Stop** controls (from current `[agents.*]` entries).
-4. **Stop** stops server. **Stop wrappers** stops configured/running wrappers (best effort).
+### 4. LAN & Security Tab
+Configure LAN host and apply origin/security helper patches.
 
-### 6. Logs
+![LAN and Security tab controls and status](screenshots/4_lan_security.png)
 
-Shows output from setup actions and server logs. ANSI colors are supported.
+### 5. Run Tab
+Start/stop server and wrappers for configured agents.
+
+#### 5a. Idle state (not running)
+![Run tab with server and wrappers stopped](screenshots/5a_run_control_not_running.png)
+
+#### 5b. Active state (running)
+![Run tab with server and wrappers running](screenshots/5b_run_control_running.png)
+
+### 6. Logs Tab
+Monitor setup, server, and wrapper output from one place.
+
+![Logs tab showing aggregated runtime logs](screenshots/6_logs.png)
+
+## Typical Workflow
+
+1. Setup: clone/pull repo and create/repair `.venv`
+2. Workspaces: add workspace and set active (auto-applies workspace `cwd` to all agents and hot-reloads tabs)
+3. Config: define agents and save `config.toml`
+4. LAN & Security: optional LAN settings/patching
+5. Run: start server and launch selected wrappers
+6. Logs: monitor output and troubleshoot
 
 ## Notes on QFluentWidgets
 
-QFluentWidgets uses the import name `qfluentwidgets`. Do not install multiple variants at once (PyQt-Fluent-Widgets / PyQt6-Fluent-Widgets / PySide6-Fluent-Widgets) because they share that module name.
+QFluentWidgets uses the import name `qfluentwidgets`. Do not install multiple variants at once (`PyQt-Fluent-Widgets` / `PyQt6-Fluent-Widgets` / `PySide6-Fluent-Widgets`) because they share that module name.
 
-This project uses **PyQt6-Fluent-Widgets**.
+This project uses `PyQt6-Fluent-Widgets`.
 
 ## Licensing
 
-`PyQt6-Fluent-Widgets` is **GPLv3**. If you distribute ACP, comply with GPLv3.
+`PyQt6-Fluent-Widgets` is GPLv3. If you distribute ACP, comply with GPLv3.
 
 ## Packaging
 

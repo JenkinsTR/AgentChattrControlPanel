@@ -105,7 +105,7 @@ Monitor setup, server, and wrapper output from one place.
 ## Typical Workflow
 
 1. Setup: clone/pull repo and create/repair `.venv`
-2. Workspaces: add workspace and set active
+2. Workspaces: add workspace and set active (auto-applies workspace `cwd` to all agents and hot-reloads tabs)
 3. Config: define agents and save `config.toml`
 4. LAN & Security: optional LAN settings/patching
 5. Run: start server and launch selected wrappers

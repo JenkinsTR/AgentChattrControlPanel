@@ -4,7 +4,7 @@ import os
 import threading
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QFileDialog
 
 from qfluentwidgets import (
@@ -16,14 +16,22 @@ from qfluentwidgets.components.widgets.label import CaptionLabel
 
 from ...core.state import AppState
 from ...core.workspaces import add_workspace, remove_workspace, set_active_workspace, create_workspace_folder
-from ...core.codex_config import is_workspace_trusted, add_workspace_to_codex_trusted
+from ...core.codex_config import (
+    is_workspace_trusted,
+    add_workspace_to_codex_trusted,
+    add_workspace_to_codex_writable_roots,
+    is_workspace_in_writable_roots,
+)
 from ...core.codex_windows_acl import (
     inspect_workspace_acl_for_codex,
     repair_workspace_acl_for_codex,
     probe_codex_sandbox_write,
 )
+from ...core.toml_config import apply_workspace_single, list_agent_defs, load_toml, save_toml
 
 class WorkspacesInterface(ScrollArea):
+    workspace_activated = pyqtSignal(str, bool, str)
+
     def __init__(self, parent, state: AppState):
         super().__init__(parent)
         self.state = state
@@ -38,7 +46,7 @@ class WorkspacesInterface(ScrollArea):
         self.v.setSpacing(18)
 
         hint = CaptionLabel(
-            "Workspaces are folders where Codex/Gemini run. Set active → Config → Apply.",
+            "Workspaces are folders where agents run. Set active applies workspace cwd to all agents immediately.",
             self.container,
         )
         hint.setStyleSheet("color: gray; padding-bottom: 4px;")
@@ -173,7 +181,7 @@ class WorkspacesInterface(ScrollArea):
         self._ensure_codex_trusted_on_show()
 
     def _ensure_codex_trusted_on_show(self):
-        """On tab show: if active workspace exists and is not trusted, add it."""
+        """On tab show: if active workspace exists, ensure Codex trust + writable_roots."""
         ws = self.state.active_workspace.strip()
         if not ws:
             self._refresh_codex_status()
@@ -183,8 +191,33 @@ class WorkspacesInterface(ScrollArea):
             status, msg = add_workspace_to_codex_trusted(ws)
             if status == "added":
                 self.info(True, "Codex trusted", msg)
+        if not is_workspace_in_writable_roots(ws):
+            status, msg = add_workspace_to_codex_writable_roots(ws)
+            if status == "added":
+                self.info(True, "Codex writable_roots", msg)
         self._refresh_codex_status()
         self._refresh_codex_acl_status()
+
+    def _config_path(self) -> Path | None:
+        root = self.state.agentchattr_root.strip()
+        if not root:
+            return None
+        return Path(root) / "config.toml"
+
+    def _apply_active_workspace_to_config(self, workspace_path: str) -> tuple[bool, str]:
+        cfg = self._config_path()
+        if not cfg:
+            return False, "agentchattr root is not set."
+        if not cfg.exists():
+            return False, "config.toml not found. Use Config tab to write default config first."
+        try:
+            doc = load_toml(cfg)
+            apply_workspace_single(doc, workspace_path, agents=None)
+            save_toml(cfg, doc)
+            count = len(list_agent_defs(doc))
+            return True, f"Applied workspace to {count} agent(s)."
+        except Exception as e:
+            return False, str(e)
 
     def on_set_active(self):
         item = self.list.currentItem()
@@ -193,7 +226,28 @@ class WorkspacesInterface(ScrollArea):
             return
         path = item.data(0)
         set_active_workspace(self.state, path)
-        self.info(True, "Active workspace", path)
+
+        trust_status, trust_msg = add_workspace_to_codex_trusted(path)
+        roots_status, roots_msg = add_workspace_to_codex_writable_roots(path)
+
+        ok, detail = self._apply_active_workspace_to_config(path)
+        if ok:
+            self.info(True, "Active workspace applied", f"{path} | {detail}")
+        else:
+            self.info(True, "Active workspace set", path)
+            self.info(False, "Workspace apply warning", detail)
+
+        if trust_status == "added":
+            self.info(True, "Codex trusted", trust_msg)
+        elif trust_status == "error":
+            self.info(False, "Codex trust warning", trust_msg)
+
+        if roots_status == "added":
+            self.info(True, "Codex writable_roots", roots_msg)
+        elif roots_status == "error":
+            self.info(False, "Codex writable_roots warning", roots_msg)
+
+        self.workspace_activated.emit(path, ok, detail)
         self.refresh()
 
     def on_remove(self):
@@ -211,13 +265,26 @@ class WorkspacesInterface(ScrollArea):
         if not ws:
             self.info(False, "No active workspace", "Set an active workspace first.")
             return
-        status, msg = add_workspace_to_codex_trusted(ws)
-        if status == "trusted":
-            self.info(True, "Already trusted", msg)
-        elif status == "added":
-            self.info(True, "Added to Codex trusted", msg)
+        trust_status, trust_msg = add_workspace_to_codex_trusted(ws)
+        roots_status, roots_msg = add_workspace_to_codex_writable_roots(ws)
+        if trust_status == "trusted":
+            self.info(True, "Already trusted", trust_msg)
+        elif trust_status == "added":
+            self.info(True, "Added to Codex trusted", trust_msg)
+        elif trust_status == "error":
+            self.info(False, "Failed", trust_msg)
+
+        if roots_status == "present":
+            self.info(True, "Codex writable_roots", roots_msg)
+        elif roots_status == "added":
+            self.info(True, "Added writable root", roots_msg)
+        elif roots_status == "error":
+            self.info(False, "Writable roots failed", roots_msg)
+
+        if trust_status in ("trusted", "added") and roots_status in ("present", "added"):
+            self.info(True, "Codex workspace ready", ws)
         else:
-            self.info(False, "Failed", msg)
+            self.info(False, "Codex workspace partially configured", ws)
         self._refresh_codex_status()
         self._refresh_codex_acl_status()
 
@@ -231,15 +298,21 @@ class WorkspacesInterface(ScrollArea):
             self.codexAddCard.setEnabled(False)
             return
         trusted = is_workspace_trusted(ws)
-        if trusted:
+        writable = is_workspace_in_writable_roots(ws)
+        if trusted and writable:
             self.codexStatusCard.setTitle("Trusted")
             self.codexStatusCard.setContent(ws)
             self.codexStatusCard.button.setText("✓")
             self.codexStatusCard.button.setStyleSheet("background-color: #2ecc71; color: white;")
             self.codexAddCard.setEnabled(False)
         else:
-            self.codexStatusCard.setTitle("Not trusted")
-            self.codexStatusCard.setContent(ws)
+            missing: list[str] = []
+            if not trusted:
+                missing.append("trusted")
+            if not writable:
+                missing.append("writable_roots")
+            self.codexStatusCard.setTitle("Codex workspace not ready")
+            self.codexStatusCard.setContent(f"{ws} | missing: {', '.join(missing)}")
             self.codexStatusCard.button.setText("!")
             self.codexStatusCard.button.setStyleSheet("background-color: #e67e22; color: white;")
             self.codexAddCard.setEnabled(True)
