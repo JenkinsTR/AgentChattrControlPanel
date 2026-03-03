@@ -110,7 +110,29 @@ class NetworkInterface(ScrollArea):
         host = self.hostEdit.text().strip() or "127.0.0.1"
         self.state.server_host = host
         save_state(self.state)
+
+        # Also write host into agentchattr/config.toml so wrapper.py
+        # (which reads config.toml at startup) connects to the right address.
+        self._sync_host_to_config_toml(host)
+
         self.info(True, "Host saved", host)
+
+    def _sync_host_to_config_toml(self, host: str) -> None:
+        """Write server.host into agentchattr/config.toml so wrappers use the right address."""
+        from ...core.toml_config import load_toml, save_toml, ensure_config_structure
+        root = self._repo_root()
+        if not root:
+            return
+        cfg_path = root / "config.toml"
+        if not cfg_path.exists():
+            return
+        try:
+            doc = load_toml(cfg_path)
+            doc = ensure_config_structure(doc)
+            doc["server"]["host"] = host
+            save_toml(cfg_path, doc)
+        except Exception as e:
+            self.info(False, "config.toml update failed", str(e))
 
     def refresh_status(self):
         while self.statusGroup.layout().count():
