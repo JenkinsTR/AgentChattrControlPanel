@@ -25,7 +25,9 @@ from ...core.codex_config import (
 from ...core.codex_windows_acl import (
     inspect_workspace_acl_for_codex,
     repair_workspace_acl_for_codex,
+    probe_workspace_host_write,
     probe_codex_sandbox_write,
+    codex_probe_hint,
 )
 from ...core.toml_config import apply_workspace_single, list_agent_defs, load_toml, save_toml
 
@@ -391,9 +393,24 @@ class WorkspacesInterface(ScrollArea):
         if not ws:
             self.info(False, "No active workspace", "Set an active workspace first.")
             return
-        self.info(True, "Running probe", "Testing Codex Windows sandbox write in active workspace...")
+        self.info(True, "Running probe", "Testing host write + Codex Windows sandbox write...")
 
         def worker():
+            host_result = probe_workspace_host_write(ws)
+            if host_result.code != 0:
+                detail = self._short_result(host_result.err or host_result.out or "")
+
+                def on_main_host_fail():
+                    self.info(
+                        False,
+                        "Host write probe failed",
+                        detail or "ACP process cannot write to this workspace path.",
+                    )
+                    self._refresh_codex_acl_status()
+
+                QTimer.singleShot(0, on_main_host_fail)
+                return
+
             result = probe_codex_sandbox_write(ws)
 
             def on_main():
@@ -402,7 +419,11 @@ class WorkspacesInterface(ScrollArea):
                 if ok:
                     self.info(True, "Probe passed", "Codex sandbox write probe succeeded.")
                 else:
-                    self.info(False, "Probe failed", detail or "Codex sandbox write probe failed.")
+                    hint = codex_probe_hint(result)
+                    msg = detail or "Codex sandbox write probe failed."
+                    if hint:
+                        msg = f"{hint} | {msg}"
+                    self.info(False, "Probe failed", msg)
                 self._refresh_codex_acl_status()
 
             QTimer.singleShot(0, on_main)

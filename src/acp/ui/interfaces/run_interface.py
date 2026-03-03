@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,7 @@ from ...core.agentchattr import (
     stop_process_tree,
 )
 from ...core.checks import check_agentchattr_repo, check_agentchattr_venv
-from ...core.codex_windows_acl import inspect_workspace_acl_for_codex
+from ...core.codex_windows_acl import inspect_workspace_acl_for_codex, probe_workspace_host_write
 from ...core.toml_config import is_codex_agent, list_agent_defs, load_toml
 from ..log_bus import LogBus
 
@@ -483,6 +484,12 @@ class RunInterface(ScrollArea):
                 self.bus.log(f"[RUN] Codex ACL preflight blocked launch: {acl.title} | {acl.detail}")
                 self.info(False, "Codex ACL preflight failed", f"{acl.title}: {self._short_msg(acl.detail)}")
                 return
+            host_write = probe_workspace_host_write(ws)
+            if host_write.code != 0:
+                detail = self._short_msg(host_write.err or host_write.out or "")
+                self.bus.log(f"[RUN] Codex host write preflight blocked launch: {detail}")
+                self.info(False, "Codex write preflight failed", detail or "Workspace is not writable from ACP.")
+                return
 
         try:
             start_wrapper_console(root, agent_name)
@@ -493,6 +500,65 @@ class RunInterface(ScrollArea):
         except Exception as e:
             self.bus.log(f"[ERROR] {e}")
             self.info(False, "Failed", str(e))
+
+    def restart_running_wrappers(self):
+        root = self.repo_root()
+        if not root:
+            return
+
+        running = get_running_wrapper_agents()
+        running_lower = {name.lower() for name in running}
+        targets = [a["name"] for a in self._configured_agents if a["name"].lower() in running_lower]
+        if not targets:
+            return
+
+        self.bus.log(f"[RUN] Restarting wrappers for workspace hot-reload: {', '.join(targets)}")
+        self.info(True, "Applying workspace", "Restarting running wrappers to apply new cwd.")
+
+        def worker():
+            killed = 0
+            started = 0
+            failures: list[str] = []
+
+            for agent in targets:
+                for pid in find_wrapper_pids(agent):
+                    stop_process_tree(pid)
+                    killed += 1
+
+            time.sleep(0.6)
+
+            for agent in targets:
+                try:
+                    command = self._agent_command(agent)
+                    ws = self._agent_workspace(root, agent) or self.state.active_workspace.strip()
+                    if ws and is_codex_agent(agent, command):
+                        acl = inspect_workspace_acl_for_codex(ws)
+                        if not acl.ok:
+                            failures.append(f"{agent}: {acl.title}")
+                            continue
+                        host_write = probe_workspace_host_write(ws)
+                        if host_write.code != 0:
+                            msg = self._short_msg(host_write.err or host_write.out or "")
+                            failures.append(f"{agent}: {msg or 'workspace not writable'}")
+                            continue
+                    start_wrapper_console(root, agent)
+                    started += 1
+                except Exception as e:
+                    failures.append(f"{agent}: {e}")
+
+            def on_done():
+                self.bus.log(
+                    f"[RUN] Wrapper hot-reload complete: killed={killed}, started={started}, failures={len(failures)}"
+                )
+                if failures:
+                    self.info(False, "Wrapper hot-reload partial", " | ".join(failures[:3]))
+                else:
+                    self.info(True, "Wrapper hot-reload complete", f"Restarted {started} wrapper(s).")
+                self._refresh_run_status()
+
+            QTimer.singleShot(0, on_done)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def stop_wrapper(self, agent_name: str):
         def do_stop_one():

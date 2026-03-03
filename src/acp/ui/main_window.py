@@ -89,6 +89,8 @@ class MainWindow(FluentWindow):
         # Hot-reload dependent tabs after workspace change.
         self.configInterface.reload_agents()
         self.runInterface.reload_agents()
+        if _applied:
+            self.runInterface.restart_running_wrappers()
 
     def _center(self):
         desk = QApplication.primaryScreen().availableGeometry()

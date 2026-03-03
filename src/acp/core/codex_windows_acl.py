@@ -243,6 +243,27 @@ def repair_workspace_acl_for_codex(workspace_path: str) -> CmdResult:
     return _run_repair_elevated(str(ws), deny_principals)
 
 
+def probe_workspace_host_write(workspace_path: str) -> CmdResult:
+    """Lightweight host write probe (outside Codex) for current ACP process token."""
+    if not workspace_path or not workspace_path.strip():
+        return CmdResult(1, "", "No workspace path.")
+    ws = Path(workspace_path).resolve()
+    if not ws.exists() or not ws.is_dir():
+        return CmdResult(1, "", f"Workspace does not exist: {ws}")
+
+    probe = ws / f".acp_host_probe_{int(time.time())}.txt"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+        content = probe.read_text(encoding="utf-8").strip()
+        try:
+            probe.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return CmdResult(0, content, "")
+    except Exception as e:
+        return CmdResult(1, "", str(e))
+
+
 def probe_codex_sandbox_write(workspace_path: str) -> CmdResult:
     """Run a local write probe in Codex Windows sandbox mode."""
     if not _is_windows():
@@ -284,3 +305,22 @@ def probe_codex_sandbox_write(workspace_path: str) -> CmdResult:
         return run_cmd(full_cmd, cwd=ws, timeout=90)
     except Exception as e:
         return CmdResult(1, "", str(e))
+
+
+def codex_probe_hint(result: CmdResult) -> str:
+    """Human-readable hint for common Codex sandbox probe failures."""
+    text = f"{result.out}\n{result.err}".lower()
+    if "createrestrictedtoken failed: 87" in text:
+        return (
+            "Codex Windows sandbox failed to initialize restricted token "
+            "(CreateRestrictedToken failed: 87). This is an environment/runtime issue, "
+            "not a workspace ACL issue."
+        )
+    if "access is denied" in text and ".codex\\tmp\\arg0" in text.replace("/", "\\"):
+        return (
+            "Codex could not manage ~/.codex/tmp/arg0. Close other Codex sessions and retry, "
+            "or clear stale ~/.codex/tmp/arg0 entries."
+        )
+    if "pathnotfound" in text or "path not found" in text:
+        return "The workspace path is not visible to the Codex process token."
+    return ""
