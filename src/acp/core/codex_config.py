@@ -184,7 +184,7 @@ def add_workspace_to_codex_writable_roots(workspace_path: str) -> tuple[Writable
             return ("present", "Workspace already in Codex writable_roots")
 
         if os.name == "nt":
-            roots.extend([key_fwd, key_win])
+            roots.extend([key_fwd, key_win, key_fwd.lower(), key_win.lower()])
         else:
             roots.append(key_fwd)
 
@@ -194,10 +194,9 @@ def add_workspace_to_codex_writable_roots(workspace_path: str) -> tuple[Writable
         for root in roots:
             if not root:
                 continue
-            key = root.lower()
-            if key in seen:
+            if root in seen:
                 continue
-            seen.add(key)
+            seen.add(root)
             dedup.append(root)
 
         section["writable_roots"] = dedup

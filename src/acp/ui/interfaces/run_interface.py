@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import threading
 import time
 import webbrowser
@@ -466,6 +467,12 @@ class RunInterface(ScrollArea):
         except Exception:
             return str(path)
 
+    def _resolved_command_path(self, command: str) -> str:
+        if not command:
+            return ""
+        resolved = shutil.which(command)
+        return str(resolved) if resolved else ""
+
     def start_wrapper(self, agent_name: str):
         if self._wrapper_running(agent_name):
             self.info(False, "Already running", f"{agent_name} wrapper is already running.")
@@ -479,6 +486,16 @@ class RunInterface(ScrollArea):
         command = self._agent_command(agent_name)
         ws = self._agent_workspace(root, agent_name) or self.state.active_workspace.strip()
         if ws and is_codex_agent(agent_name, command):
+            resolved = self._resolved_command_path(command)
+            if resolved:
+                self.bus.log(f"[RUN] Codex command resolved to: {resolved}")
+                low = resolved.lower().replace("/", "\\")
+                if "\\.cursor\\extensions\\openai.chatgpt-" in low and low.endswith("\\codex.exe"):
+                    self.info(
+                        False,
+                        "Codex binary warning",
+                        "Resolved to Cursor extension codex.exe. Prefer npm codex.cmd for agentchattr wrappers.",
+                    )
             acl = inspect_workspace_acl_for_codex(ws)
             if not acl.ok:
                 self.bus.log(f"[RUN] Codex ACL preflight blocked launch: {acl.title} | {acl.detail}")

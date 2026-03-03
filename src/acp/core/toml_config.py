@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -267,6 +268,78 @@ def list_agent_defs(doc: Any) -> list[AgentDef]:
     return out
 
 
+def _workspace_arg_variants(path: str) -> list[str]:
+    raw = (path or "").strip()
+    if not raw:
+        return []
+
+    p = Path(raw)
+    vals: list[str] = [raw]
+    try:
+        resolved = str(p.resolve())
+    except Exception:
+        resolved = str(p)
+
+    vals.append(resolved)
+    vals.append(resolved.replace("\\", "/"))
+    if os.name == "nt":
+        vals.append(resolved.lower())
+        vals.append(resolved.replace("\\", "/").lower())
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in vals:
+        s = str(v).strip()
+        if not s:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+def _sync_codex_add_dir(extra: list[str], workspace_path: str, old_workspace_path: str | None = None) -> list[str]:
+    """Ensure Codex has --add-dir entries for the active workspace path variants."""
+    old_variants = {v.lower() if os.name == "nt" else v for v in _workspace_arg_variants(old_workspace_path or "")}
+
+    kept: list[str] = []
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok == "--add-dir" and i + 1 < len(extra):
+            val = str(extra[i + 1]).strip()
+            if val:
+                key = val.lower() if os.name == "nt" else val
+                if key in old_variants:
+                    i += 2
+                    continue
+            kept.extend([tok, extra[i + 1]])
+            i += 2
+            continue
+        kept.append(tok)
+        i += 1
+
+    existing: set[str] = set()
+    i = 0
+    while i < len(kept):
+        if kept[i] == "--add-dir" and i + 1 < len(kept):
+            val = str(kept[i + 1]).strip()
+            if val:
+                existing.add(val)
+            i += 2
+        else:
+            i += 1
+
+    for variant in _workspace_arg_variants(workspace_path):
+        if variant in existing:
+            continue
+        kept.extend(["--add-dir", variant])
+        existing.add(variant)
+
+    return kept
+
+
 def set_agent(doc: Any, a: AgentDef) -> None:
     doc = ensure_config_structure(doc)
     if a.name not in doc["agents"]:
@@ -289,6 +362,8 @@ def set_agent(doc: Any, a: AgentDef) -> None:
     if not extra_args and is_codex_agent(a.name, a.command) and a.write_access:
         # Keep flags explicit to avoid --full-auto reintroducing on-request prompts.
         extra_args = CODEX_RUNTIME_EXTRA_ARGS.copy()
+    if is_codex_agent(a.name, a.command) and a.write_access and a.cwd:
+        extra_args = _sync_codex_add_dir(extra_args, a.cwd)
     if extra_args:
         agent_cfg["extra_args"] = extra_args
     elif "extra_args" in agent_cfg:
@@ -326,7 +401,14 @@ def apply_workspace_single(doc: Any, workspace_path: str, agents: list[str] | No
         agents = [k for k in list_agent_names(doc)]
     for name in agents:
         if "agents" in doc and name in doc["agents"]:
-            doc["agents"][name]["cwd"] = workspace_path
+            cfg = doc["agents"][name]
+            old_cwd = str(cfg.get("cwd", "")).strip()
+            cfg["cwd"] = workspace_path
+            command = str(cfg.get("command", ""))
+            write_access = _to_bool(cfg.get("write_access", True), True)
+            if is_codex_agent(name, command) and write_access:
+                extra = _to_str_list(cfg.get("extra_args", []))
+                cfg["extra_args"] = _sync_codex_add_dir(extra, workspace_path, old_workspace_path=old_cwd)
 
 
 def get_agent_write_access(doc: Any, name: str) -> bool:
@@ -408,6 +490,9 @@ def set_agent_write_access(doc: Any, name: str, value: bool) -> None:
         new_extra = _strip_codex_runtime_args(extra)
         if value:
             new_extra = CODEX_RUNTIME_EXTRA_ARGS.copy() + new_extra
+            cwd = str(cfg.get("cwd", "")).strip()
+            if cwd:
+                new_extra = _sync_codex_add_dir(new_extra, cwd)
         cfg["extra_args"] = new_extra
 
 
